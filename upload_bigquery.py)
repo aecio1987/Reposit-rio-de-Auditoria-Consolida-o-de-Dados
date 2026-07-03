@@ -1,0 +1,83 @@
+import os
+import sys
+from google.cloud import bigquery
+
+# ==============================================================================
+# CONFIGURAÇÕES DINÂMICAS DE DIRETÓRIOS E CREDENCIAIS (PRONTO PARA GITHUB)
+# ==============================================================================
+
+# Busca os caminhos através de variáveis de ambiente. 
+# Se não existirem, assume que os arquivos estão na mesma pasta do script.
+JSON_CREDENTIALS_PATH = os.getenv("GOOGLE_JSON_KEY", "credentials.json")
+CSV_FILE_PATH = os.getenv("CSV_AUDITORIA_PATH", "csv_unico_auditoria.csv")
+
+# Identificadores do BigQuery (Substitua pelos dados do seu projeto se necessário)
+PROJECT_ID = "moonlit-album-456314-h6"
+TABLE_ID = f"{PROJECT_ID}.auditoria_2026.base_completa"
+
+# Define a variável que a biblioteca do Google Cloud exige nativamente
+os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = JSON_CREDENTIALS_PATH
+
+# ==============================================================================
+# VALIDAÇÃO E EXECUÇÃO DO UPLOAD
+# ==============================================================================
+
+print("------------------------------------------------------------------------")
+# Validação de segurança para evitar chamadas falsas à API do Google
+if not os.path.exists(JSON_CREDENTIALS_PATH):
+    print(f"[ERRO]: Arquivo de credenciais '{JSON_CREDENTIALS_PATH}' não foi encontrado.")
+    print("Por favor, baixe o seu JSON do GCP e coloque-o nesta mesma pasta com o nome 'credentials.json'")
+    sys.exit(1)
+
+if not os.path.exists(CSV_FILE_PATH):
+    print(f"[ERRO]: Arquivo CSV para upload '{CSV_FILE_PATH}' não foi encontrado.")
+    print("Execute o script 'consolidar.py' primeiro para gerar o arquivo consolidado.")
+    sys.exit(1)
+
+# Inicializa o cliente do BigQuery
+client = bigquery.Client(project=PROJECT_ID)
+
+# Configuração para criar/atualizar a tabela forçando todas as colunas como STRING
+job_config = bigquery.LoadJobConfig(
+    source_format=bigquery.SourceFormat.CSV,
+    skip_leading_rows=1,       # Ignora o cabeçalho do CSV
+    autodetect=False,          # Desliga a detecção automática para blindar a tipagem
+    
+    # Sobrescreve a tabela antiga com os novos dados limpos e padronizados
+    write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE,
+    
+    schema=[
+        bigquery.SchemaField("DRE", "STRING"),
+        bigquery.SchemaField("TipoLotacao", "STRING"),
+        bigquery.SchemaField("Municipio", "STRING"),
+        bigquery.SchemaField("Lotacao", "STRING"),
+        bigquery.SchemaField("Nome_Usuario", "STRING"),
+        bigquery.SchemaField("TipoVinculo", "STRING"),
+        bigquery.SchemaField("Funcao", "STRING"),
+        bigquery.SchemaField("CPF", "STRING"),
+        bigquery.SchemaField("Matricula", "STRING"),
+        bigquery.SchemaField("Vinculo", "STRING"),
+        bigquery.SchemaField("Codigo", "STRING"),
+        bigquery.SchemaField("Ocorrencia", "STRING"),
+        bigquery.SchemaField("Data", "STRING"),
+        bigquery.SchemaField("M__s", "STRING"),
+    ]
+)
+
+print(f"Iniciando o upload do volume de dados para o BigQuery. Vá tomar um café! ☕")
+print("Processando na nuvem... Aguarde a conclusão do processo.")
+
+try:
+    with open(CSV_FILE_PATH, "rb") as source_file:
+        job = client.load_table_from_file(source_file, TABLE_ID, job_config=job_config)
+
+    job.result()  # Aguarda o BigQuery processar e concluir o upload na nuvem
+    
+    print("\n========================================================")
+    print(f"SUCESSO ABSOLUTO! Tabela atualizada com sucesso: {TABLE_ID}")
+    print("========================================================")
+    print("Os dados foram processados. Pode atualizar seus painéis no Looker Studio.")
+
+except Exception as e:
+    print("\n[ERRO ENCONTRADO DURANTE O UPLOAD]:")
+    print(e)
